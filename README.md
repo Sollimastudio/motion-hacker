@@ -1,86 +1,136 @@
-# Sol.IA Motion Editor
+# Sol.IA Motion Editor Local
 
-Backend inicial do editor automático de vídeos curtos da Sol.IA.
+Aplicativo local para editar vídeos curtos no próprio computador.
 
-Este repositório contém um MVP técnico em FastAPI que já faz o fluxo básico:
+Esta versão foi pensada para uso pessoal: você roda localmente, sobe seus vídeos, coloca um texto de abertura e gera um MP4 vertical 1080×1920 para Reels, TikTok ou Shorts.
 
-1. recebe upload de arquivo;
-2. salva o arquivo temporariamente;
-3. cria um job;
-4. coloca o job numa fila assíncrona;
-5. processa o job em segundo plano;
-6. permite consultar o status do processamento.
+## O que já funciona
 
-Por enquanto, o processamento real de vídeo ainda está simulado. O lugar onde hoje existe um `asyncio.sleep(5)` é onde entram, na próxima fase:
+- Interface visual no navegador.
+- Upload de vídeo.
+- Fila de processamento local.
+- Renderização com FFmpeg.
+- Conversão para vídeo vertical 1080×1920.
+- Texto de abertura nos primeiros 4 segundos.
+- Download do vídeo final.
 
-- extração de áudio com FFmpeg;
-- transcrição com AssemblyAI ou Whisper;
-- análise editorial com IA;
-- geração de timeline JSON;
-- renderização final em MP4 vertical.
+## O que ainda não faz
 
-## Como rodar localmente
+- Transcrição automática.
+- Corte inteligente de silêncio.
+- Legendas sincronizadas.
+- Escolha automática dos melhores trechos.
+- IA editorial.
+
+Essas funções entram depois. Primeiro o app precisa abrir, receber vídeo e devolver vídeo. O resto é luxo — necessário, mas luxo.
+
+## Instalação no computador
+
+### 1. Instale o Python
+
+Baixe em:
+
+```text
+https://www.python.org/downloads/
+```
+
+Durante a instalação, marque a opção **Add Python to PATH**.
+
+### 2. Instale o FFmpeg
+
+O FFmpeg é o motor que renderiza o vídeo.
+
+No Windows, a forma mais simples é instalar pelo site oficial ou pelo Chocolatey.
+
+No Mac:
+
+```bash
+brew install ffmpeg
+```
+
+No Linux:
+
+```bash
+sudo apt install ffmpeg
+```
+
+### 3. Baixe o repositório
+
+```bash
+git clone https://github.com/Sollimastudio/motion-hacker.git
+cd motion-hacker
+```
+
+### 4. Instale as dependências
 
 ```bash
 python -m venv .venv
+```
+
+Windows:
+
+```bash
+.venv\Scripts\activate
+```
+
+Mac/Linux:
+
+```bash
 source .venv/bin/activate
+```
+
+Depois:
+
+```bash
 pip install -r requirements.txt
+```
+
+### 5. Rode o app
+
+```bash
 uvicorn main:app --reload
 ```
 
-Depois abra:
+Abra no navegador:
 
 ```text
-http://127.0.0.1:8000/docs
+http://127.0.0.1:8000
 ```
 
-## Endpoints
+## Como usar
 
-### Upload
+1. Clique em **Vídeo bruto**.
+2. Escolha um vídeo do seu computador.
+3. Escreva um texto de abertura, por exemplo:
 
-```bash
-curl -F "file=@video.mp4" http://127.0.0.1:8000/upload
+```text
+Pare de chamar ausência de paz.
 ```
 
-Resposta:
+4. Escolha um estilo:
+   - UGC Confessional: natural.
+   - Retention Cut: mais contraste e força.
+   - Premium Noir: editorial, escuro e mais sofisticado.
+5. Clique em **Editar meu vídeo**.
+6. Aguarde processar.
+7. Clique em **Baixar vídeo pronto**.
 
-```json
-{
-  "id": "job-id",
-  "status": "queued",
-  "result": null
-}
-```
+## Onde ficam os arquivos
 
-### Status do job
+- Vídeos enviados: `uploads/`
+- Vídeos prontos: `outputs/`
 
-```bash
-curl http://127.0.0.1:8000/job/job-id
-```
+## Próxima fase
 
-Quando concluído:
+A próxima versão deve adicionar:
 
-```json
-{
-  "id": "job-id",
-  "status": "done",
-  "result": "processed_job-id.mp4"
-}
-```
+1. transcrição automática com Whisper local;
+2. legenda automática;
+3. corte de silêncio;
+4. presets mais bonitos;
+5. opção de escolher duração final;
+6. capa automática.
 
-## Próximo passo técnico
+## Observação importante
 
-Trocar a simulação do worker pela função real:
-
-```python
-await process_video_pipeline(job_id)
-```
-
-Essa função deverá executar:
-
-1. `ffmpeg` para extrair áudio;
-2. transcrição;
-3. análise da transcrição;
-4. geração de timeline;
-5. renderização do vídeo final;
-6. upload do resultado.
+Este app roda localmente. Ele não publica nada, não manda seus vídeos para rede social e não precisa de login.
