@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sol.IA UGC Cut 0.3</title>
+  <title>Sol.IA UGC Cut 0.3.1</title>
   <style>
     :root {
       --bg: #08080b;
@@ -27,7 +27,7 @@
       place-items: center;
     }
     .app {
-      width: min(1040px, 100%);
+      width: min(1080px, 100%);
       display: grid;
       grid-template-columns: 1.1fr .9fr;
       gap: 22px;
@@ -49,7 +49,7 @@
     .gold { color: var(--gold); }
     p { color: var(--muted); line-height: 1.5; }
     label { display: block; margin: 16px 0 7px; font-weight: 800; }
-    input, select, button {
+    input, select, button, textarea {
       width: 100%;
       border: 1px solid rgba(255,255,255,.13);
       border-radius: 16px;
@@ -57,6 +57,12 @@
       color: var(--text);
       padding: 14px 15px;
       font-size: 16px;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    textarea {
+      min-height: 130px;
+      resize: vertical;
+      line-height: 1.45;
     }
     input[type="file"] { padding: 16px; }
     button {
@@ -125,9 +131,9 @@
 <body>
   <main class="app">
     <section class="card">
-      <div class="badge">local • ffmpeg • ugc 0.3</div>
+      <div class="badge">local • ffmpeg • ugc 0.3.1</div>
       <h1>Sol.IA <span class="gold">UGC Cut</span></h1>
-      <p>Suba um vídeo, escolha um modelo e gere um corte vertical. Esta versão já aceita capa/imagem de produto para criar vídeo com cara de venda, não só faixa gritando no canto.</p>
+      <p>Suba um vídeo, escolha um modelo e cole o texto aproximado da fala. O app usa esse roteiro para simular legendas e blocos narrativos enquanto o Whisper ainda não entra em cena.</p>
       <form id="form">
         <label>Vídeo bruto</label>
         <input name="file" type="file" accept="video/*" required />
@@ -153,6 +159,10 @@
         <label>CTA final</label>
         <input name="cta" value="POSICIONE-SE" />
 
+        <label>Texto aproximado do vídeo / roteiro manual</label>
+        <textarea name="script" placeholder="Cole aqui o que você falou no vídeo. Ex: Não é dedo podre. É padrão repetindo. Você não escolhe mal por azar... "></textarea>
+        <div class="hint">Isso ainda não é Whisper. É o atalho esperto: você cola o texto e o app divide em blocos de legenda/timeline.</div>
+
         <label>Duração em segundos</label>
         <input name="seconds" type="number" value="30" min="5" max="90" />
 
@@ -164,14 +174,14 @@
 
     <aside class="card">
       <h2>O que essa versão faz</h2>
-      <p><span class="pill">Novo</span>Imagem de produto na lateral quando você envia capa do eBook.</p>
+      <p><span class="pill">Novo</span>Campo de roteiro manual para simular legenda/timeline antes do Whisper.</p>
       <ul class="template-list">
-        <li><strong>Gancho Cinemático:</strong> vídeo em tela cheia com tarjas, gancho e CTA.</li>
+        <li><strong>Gancho Cinemático:</strong> vídeo em tela cheia com gancho, legenda por blocos e CTA.</li>
         <li><strong>Produto + Autoridade:</strong> você falando + capa do eBook no painel lateral.</li>
         <li><strong>Tela dividida:</strong> você de um lado, frase forte do outro.</li>
         <li><strong>Noir premium:</strong> visual mais escuro, editorial e elegante.</li>
       </ul>
-      <p>Próximo salto: legenda automática com Whisper, corte de silêncio e templates com animação real. Porque por enquanto ele edita, mas ainda não tem o drama luxuoso do Captions. Um dia o pobre fica chique.</p>
+      <p>Próximo salto real: Whisper para preencher esse roteiro sozinho, corte de silêncio e legenda dinâmica palavra por palavra. Porque por enquanto ele já ajuda, mas ainda não virou o Captions brasileiro de Itaberaí.</p>
     </aside>
   </main>
 
