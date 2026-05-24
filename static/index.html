@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sol.IA Motion Planner 0.4</title>
+  <title>Sol.IA Motion Planner 0.4.1</title>
   <style>
     :root {
       --bg: #08080b;
@@ -59,13 +59,9 @@
       font-size: 16px;
       font-family: Arial, Helvetica, sans-serif;
     }
-    textarea {
-      min-height: 150px;
-      resize: vertical;
-      line-height: 1.45;
-    }
+    textarea { min-height: 150px; resize: vertical; line-height: 1.45; }
     input[type="file"] { padding: 16px; }
-    button {
+    button, .link-button {
       margin-top: 16px;
       border: 0;
       cursor: pointer;
@@ -73,8 +69,13 @@
       color: #181000;
       font-weight: 900;
       transition: transform .15s ease;
+      text-align: center;
+      text-decoration: none;
+      display: block;
+      border-radius: 16px;
+      padding: 14px 15px;
     }
-    button:hover { transform: translateY(-1px); }
+    button:hover, .link-button:hover { transform: translateY(-1px); }
     button:disabled { opacity: .55; cursor: wait; }
     .secondary {
       background: rgba(255,255,255,.1);
@@ -114,12 +115,7 @@
       text-transform: uppercase;
       margin-bottom: 18px;
     }
-    .hint {
-      margin-top: 8px;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.4;
-    }
+    .hint { margin-top: 8px; color: var(--muted); font-size: 13px; line-height: 1.4; }
     .pill {
       display: inline-block;
       background: rgba(192,24,45,.18);
@@ -130,11 +126,7 @@
       font-size: 12px;
       margin-right: 6px;
     }
-    .plan {
-      display: grid;
-      gap: 10px;
-      margin-top: 14px;
-    }
+    .plan { display: grid; gap: 10px; margin-top: 14px; }
     .scene {
       border: 1px solid rgba(255,255,255,.12);
       background: rgba(255,255,255,.055);
@@ -150,9 +142,9 @@
 <body>
   <main class="app">
     <section class="card">
-      <div class="badge">local • ffmpeg • planner 0.4</div>
+      <div class="badge">local • ffmpeg • planner 0.4.1</div>
       <h1>Sol.IA <span class="gold">Motion Planner</span></h1>
-      <p>Agora a prioridade é planejamento por cenas: gancho, dor, virada, produto e CTA. O render ainda é simples, mas a lógica começa a deixar de ser faixa aleatória.</p>
+      <p>Render mais limpo, menos escuro e com plano salvo em JSON. Ainda não é Captions, mas agora não se perde o último vídeo nem o plano de cenas.</p>
       <form id="form">
         <label>Vídeo bruto</label>
         <input name="file" type="file" accept="video/*" required />
@@ -190,18 +182,20 @@
       </form>
       <div id="status" class="status">Aguardando vídeo. Primeiro gere o plano; depois renderize.</div>
       <a id="download" class="download" href="#">Baixar vídeo pronto</a>
+      <a class="link-button secondary" href="/latest" target="_blank">Abrir último vídeo gerado</a>
+      <a class="link-button secondary" href="/latest-plan" target="_blank">Baixar último plano JSON</a>
     </section>
 
     <aside class="card">
       <h2>Plano de edição</h2>
-      <p><span class="pill">Novo</span>Timeline por cenas antes do render.</p>
+      <p><span class="pill">Novo</span>Plano salvo em JSON e cópia fixa do último vídeo.</p>
       <div id="plan" class="plan">
         <div class="scene">
           <strong>Nenhum plano ainda.</strong>
           <p>Cole o roteiro e clique em “Gerar plano de edição”.</p>
         </div>
       </div>
-      <p>Isso ainda não é Captions. É o cérebro editorial começando a nascer. Feiozinho, mas pelo menos agora pensa antes de colocar faixa em qualquer canto.</p>
+      <p>O foco desta fase é parar de renderizar no escuro. Primeiro o app pensa, depois ele renderiza. Milagre? Não. O mínimo civilizatório.</p>
     </aside>
   </main>
 
@@ -221,7 +215,7 @@
       planBox.innerHTML = plan.scenes.map(scene => `
         <div class="scene">
           <strong>Cena ${scene.index} — ${scene.role}</strong>
-          <small>${scene.start}s até ${scene.end}s • ${scene.duration}s</small>
+          <small>${scene.start}s até ${scene.end}s • ${scene.duration}s • camada: ${scene.layer || "visual"}</small>
           <p>${scene.overlay || scene.spoken_text || ""}</p>
           <small>${scene.visual}</small>
         </div>
@@ -249,7 +243,7 @@
         if (job.status === "processing") statusBox.textContent = "Processando com FFmpeg.";
         if (job.status === "done") {
           clearInterval(timer);
-          statusBox.textContent = "Pronto. Vídeo gerado. Também salvei uma cópia como ULTIMO_SOLIA_EDITADO.mp4 na pasta outputs.";
+          statusBox.textContent = "Pronto. Vídeo gerado. Também salvei ULTIMO_SOLIA_EDITADO.mp4 e ULTIMO_PLANO_SOLIA.json na pasta outputs.";
           button.disabled = false;
           planButton.disabled = false;
           download.href = job.download_url;
