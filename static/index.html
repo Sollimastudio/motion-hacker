@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sol.IA UGC Cut 0.3.1</title>
+  <title>Sol.IA Motion Planner 0.4</title>
   <style>
     :root {
       --bg: #08080b;
@@ -27,9 +27,9 @@
       place-items: center;
     }
     .app {
-      width: min(1080px, 100%);
+      width: min(1140px, 100%);
       display: grid;
-      grid-template-columns: 1.1fr .9fr;
+      grid-template-columns: 1.05fr .95fr;
       gap: 22px;
     }
     .card {
@@ -60,13 +60,13 @@
       font-family: Arial, Helvetica, sans-serif;
     }
     textarea {
-      min-height: 130px;
+      min-height: 150px;
       resize: vertical;
       line-height: 1.45;
     }
     input[type="file"] { padding: 16px; }
     button {
-      margin-top: 20px;
+      margin-top: 16px;
       border: 0;
       cursor: pointer;
       background: linear-gradient(135deg, var(--gold), #fff1a6);
@@ -76,6 +76,11 @@
     }
     button:hover { transform: translateY(-1px); }
     button:disabled { opacity: .55; cursor: wait; }
+    .secondary {
+      background: rgba(255,255,255,.1);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,.18);
+    }
     .status {
       margin-top: 18px;
       background: rgba(255,255,255,.06);
@@ -125,15 +130,29 @@
       font-size: 12px;
       margin-right: 6px;
     }
-    @media (max-width: 850px) { .app { grid-template-columns: 1fr; } }
+    .plan {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .scene {
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.055);
+      border-radius: 18px;
+      padding: 14px;
+    }
+    .scene strong { color: var(--gold); }
+    .scene small { color: var(--muted); display: block; margin-top: 4px; }
+    .scene p { margin: 8px 0 0; color: var(--text); }
+    @media (max-width: 900px) { .app { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <main class="app">
     <section class="card">
-      <div class="badge">local • ffmpeg • ugc 0.3.1</div>
-      <h1>Sol.IA <span class="gold">UGC Cut</span></h1>
-      <p>Suba um vídeo, escolha um modelo e cole o texto aproximado da fala. O app usa esse roteiro para simular legendas e blocos narrativos enquanto o Whisper ainda não entra em cena.</p>
+      <div class="badge">local • ffmpeg • planner 0.4</div>
+      <h1>Sol.IA <span class="gold">Motion Planner</span></h1>
+      <p>Agora a prioridade é planejamento por cenas: gancho, dor, virada, produto e CTA. O render ainda é simples, mas a lógica começa a deixar de ser faixa aleatória.</p>
       <form id="form">
         <label>Vídeo bruto</label>
         <input name="file" type="file" accept="video/*" required />
@@ -144,44 +163,45 @@
 
         <label>Modelo</label>
         <select name="template">
-          <option value="punch">Gancho Cinemático UGC</option>
+          <option value="planner">Motion Planner — timeline por cenas</option>
           <option value="product">Produto + Autoridade</option>
           <option value="split">Tela dividida UGC</option>
           <option value="noir">Noir premium</option>
         </select>
 
-        <label>Frase inicial</label>
+        <label>Frase inicial / gancho</label>
         <input name="hook" value="NAO E DEDO PODRE" />
 
-        <label>Frase do meio</label>
+        <label>Frase de sustentação</label>
         <input name="middle" value="E PADRAO REPETINDO" />
 
         <label>CTA final</label>
         <input name="cta" value="POSICIONE-SE" />
 
         <label>Texto aproximado do vídeo / roteiro manual</label>
-        <textarea name="script" placeholder="Cole aqui o que você falou no vídeo. Ex: Não é dedo podre. É padrão repetindo. Você não escolhe mal por azar... "></textarea>
-        <div class="hint">Isso ainda não é Whisper. É o atalho esperto: você cola o texto e o app divide em blocos de legenda/timeline.</div>
+        <textarea name="script" placeholder="Cole aqui o que você falou no vídeo. Quanto mais completo, melhor o plano por cenas."></textarea>
+        <div class="hint">O app transforma esse texto em cenas. Depois o Whisper vai preencher isso sozinho.</div>
 
         <label>Duração em segundos</label>
         <input name="seconds" type="number" value="30" min="5" max="90" />
 
-        <button id="button">Editar meu vídeo</button>
+        <button id="planButton" type="button" class="secondary">Gerar plano de edição</button>
+        <button id="button" type="submit">Renderizar vídeo</button>
       </form>
-      <div id="status" class="status">Aguardando vídeo. O algoritmo ainda não aceita desculpa como arquivo.</div>
+      <div id="status" class="status">Aguardando vídeo. Primeiro gere o plano; depois renderize.</div>
       <a id="download" class="download" href="#">Baixar vídeo pronto</a>
     </section>
 
     <aside class="card">
-      <h2>O que essa versão faz</h2>
-      <p><span class="pill">Novo</span>Campo de roteiro manual para simular legenda/timeline antes do Whisper.</p>
-      <ul class="template-list">
-        <li><strong>Gancho Cinemático:</strong> vídeo em tela cheia com gancho, legenda por blocos e CTA.</li>
-        <li><strong>Produto + Autoridade:</strong> você falando + capa do eBook no painel lateral.</li>
-        <li><strong>Tela dividida:</strong> você de um lado, frase forte do outro.</li>
-        <li><strong>Noir premium:</strong> visual mais escuro, editorial e elegante.</li>
-      </ul>
-      <p>Próximo salto real: Whisper para preencher esse roteiro sozinho, corte de silêncio e legenda dinâmica palavra por palavra. Porque por enquanto ele já ajuda, mas ainda não virou o Captions brasileiro de Itaberaí.</p>
+      <h2>Plano de edição</h2>
+      <p><span class="pill">Novo</span>Timeline por cenas antes do render.</p>
+      <div id="plan" class="plan">
+        <div class="scene">
+          <strong>Nenhum plano ainda.</strong>
+          <p>Cole o roteiro e clique em “Gerar plano de edição”.</p>
+        </div>
+      </div>
+      <p>Isso ainda não é Captions. É o cérebro editorial começando a nascer. Feiozinho, mas pelo menos agora pensa antes de colocar faixa em qualquer canto.</p>
     </aside>
   </main>
 
@@ -189,18 +209,49 @@
     const form = document.getElementById("form");
     const statusBox = document.getElementById("status");
     const button = document.getElementById("button");
+    const planButton = document.getElementById("planButton");
     const download = document.getElementById("download");
+    const planBox = document.getElementById("plan");
+
+    function renderPlan(plan) {
+      if (!plan.scenes || !plan.scenes.length) {
+        planBox.innerHTML = `<div class="scene"><strong>Sem cenas.</strong><p>Coloque mais texto no roteiro.</p></div>`;
+        return;
+      }
+      planBox.innerHTML = plan.scenes.map(scene => `
+        <div class="scene">
+          <strong>Cena ${scene.index} — ${scene.role}</strong>
+          <small>${scene.start}s até ${scene.end}s • ${scene.duration}s</small>
+          <p>${scene.overlay || scene.spoken_text || ""}</p>
+          <small>${scene.visual}</small>
+        </div>
+      `).join("");
+    }
+
+    async function generatePlan() {
+      statusBox.textContent = "Gerando plano de edição...";
+      const data = new FormData(form);
+      const planData = new FormData();
+      for (const key of ["template", "hook", "middle", "cta", "script", "seconds"]) {
+        planData.append(key, data.get(key) || "");
+      }
+      const res = await fetch("/plan", { method: "POST", body: planData });
+      const plan = await res.json();
+      renderPlan(plan);
+      statusBox.textContent = "Plano gerado. Agora renderize se fizer sentido.";
+    }
 
     async function poll(jobId) {
       const timer = setInterval(async () => {
         const res = await fetch(`/job/${jobId}`);
         const job = await res.json();
         if (job.status === "queued") statusBox.textContent = "Na fila...";
-        if (job.status === "processing") statusBox.textContent = "Processando com FFmpeg. Agora sim, sem maquiagem falsa.";
+        if (job.status === "processing") statusBox.textContent = "Processando com FFmpeg.";
         if (job.status === "done") {
           clearInterval(timer);
-          statusBox.textContent = "Pronto. Vídeo gerado.";
+          statusBox.textContent = "Pronto. Vídeo gerado. Também salvei uma cópia como ULTIMO_SOLIA_EDITADO.mp4 na pasta outputs.";
           button.disabled = false;
+          planButton.disabled = false;
           download.href = job.download_url;
           download.style.display = "block";
         }
@@ -208,14 +259,18 @@
           clearInterval(timer);
           statusBox.textContent = "Erro:\n" + job.error;
           button.disabled = false;
+          planButton.disabled = false;
         }
       }, 1200);
     }
 
+    planButton.addEventListener("click", generatePlan);
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      button.disabled = true;
       download.style.display = "none";
+      button.disabled = true;
+      planButton.disabled = true;
       statusBox.textContent = "Enviando vídeo...";
       const data = new FormData(form);
       const res = await fetch("/upload", { method: "POST", body: data });
