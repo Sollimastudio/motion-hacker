@@ -1,4 +1,5 @@
 import asyncio
+import re
 import shutil
 import subprocess
 import uuid
@@ -23,7 +24,7 @@ STATIC_DIR.mkdir(exist_ok=True)
 TEXT_DIR.mkdir(exist_ok=True)
 ASSET_DIR.mkdir(exist_ok=True)
 
-app = FastAPI(title="Sol.IA UGC Cut 0.3.1")
+app = FastAPI(title="Sol.IA Motion Planner 0.4")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 jobs: dict[str, dict] = {}
@@ -44,11 +45,29 @@ async def home():
     return index_path.read_text(encoding="utf-8")
 
 
+@app.post("/plan")
+async def plan_video(
+    template: str = Form("planner"),
+    hook: str = Form("NAO E DEDO PODRE"),
+    middle: str = Form("E PADRAO REPETINDO"),
+    cta: str = Form("POSICIONE-SE"),
+    script: str = Form(""),
+    seconds: int = Form(30),
+):
+    seconds = max(5, min(int(seconds), 90))
+    return {
+        "version": "0.4",
+        "template": template,
+        "seconds": seconds,
+        "scenes": generate_plan(script, hook, middle, cta, seconds, has_product=(template == "product")),
+    }
+
+
 @app.post("/upload")
 async def upload_video(
     file: UploadFile = File(...),
     product: Optional[UploadFile] = File(None),
-    template: str = Form("punch"),
+    template: str = Form("planner"),
     hook: str = Form("NAO E DEDO PODRE"),
     middle: str = Form("E PADRAO REPETINDO"),
     cta: str = Form("POSICIONE-SE"),
@@ -70,6 +89,7 @@ async def upload_video(
             shutil.copyfileobj(product.file, f)
 
     seconds = max(5, min(int(seconds), 90))
+    scenes = generate_plan(script, hook, middle, cta, seconds, has_product=bool(product_path))
 
     jobs[job_id] = {
         "status": "queued",
@@ -81,6 +101,7 @@ async def upload_video(
         "cta": cta.strip() or "POSICIONE-SE",
         "script": script.strip(),
         "seconds": seconds,
+        "scenes": scenes,
         "result": None,
         "error": None,
     }
@@ -113,8 +134,87 @@ async def download(filename: str):
     return FileResponse(str(path), media_type="video/mp4", filename=filename)
 
 
+def clean_text(text: str) -> str:
+    return " ".join((text or "").replace("\n", " ").split()).strip()
+
+
+def split_sentences(text: str) -> list[str]:
+    text = clean_text(text)
+    if not text:
+        return []
+    parts = re.split(r"(?<=[.!?])\s+|\s+[–—-]\s+", text)
+    return [p.strip(" .!?\n\t") for p in parts if p.strip(" .!?\n\t")]
+
+
+def chunk_words(text: str, max_chunks: int) -> list[str]:
+    words = clean_text(text).split()
+    if not words:
+        return []
+    size = max(1, round(len(words) / max_chunks))
+    chunks = []
+    for i in range(0, len(words), size):
+        chunks.append(" ".join(words[i:i + size]))
+    return chunks[:max_chunks]
+
+
+def generate_plan(script: str, hook: str, middle: str, cta: str, seconds: int, has_product: bool = False) -> list[dict]:
+    hook = clean_text(hook) or "NAO E DEDO PODRE"
+    middle = clean_text(middle) or "E PADRAO REPETINDO"
+    cta = clean_text(cta) or "POSICIONE-SE"
+    sentences = split_sentences(script)
+
+    if len(sentences) < 3:
+        sentences = [hook, middle, cta]
+    elif len(sentences) > 6:
+        sentences = chunk_words(script, 6)
+
+    total = max(5, seconds)
+    scene_count = max(3, min(6, len(sentences)))
+    base_duration = total / scene_count
+    scenes = []
+
+    for idx in range(scene_count):
+        start = round(idx * base_duration, 2)
+        end = round(total if idx == scene_count - 1 else (idx + 1) * base_duration, 2)
+        text = sentences[idx] if idx < len(sentences) else ""
+
+        if idx == 0:
+            role = "GANCHO"
+            visual = "Texto gigante no topo + punch visual no rosto"
+            overlay = hook
+        elif idx == scene_count - 1:
+            role = "CTA"
+            visual = "Tarja final limpa + chamada para ação"
+            overlay = cta
+        elif has_product and idx == scene_count - 2:
+            role = "PRODUTO"
+            visual = "Capa/produto na lateral + você falando"
+            overlay = middle
+        elif idx == 1:
+            role = "DOR"
+            visual = "Legenda grande de identificação"
+            overlay = text
+        else:
+            role = "VIRADA"
+            visual = "Legenda por bloco + leve zoom"
+            overlay = text
+
+        scenes.append({
+            "index": idx + 1,
+            "start": start,
+            "end": end,
+            "duration": round(end - start, 2),
+            "role": role,
+            "spoken_text": text,
+            "overlay": overlay,
+            "visual": visual,
+        })
+
+    return scenes
+
+
 def wrap_text(text: str, max_chars: int = 15, max_lines: int = 4) -> str:
-    cleaned = " ".join(text.upper().replace("\n", " ").split())
+    cleaned = clean_text(text).upper()
     words = cleaned.split()
     lines = []
     current = ""
@@ -140,46 +240,6 @@ def write_text_file(job_id: str, name: str, text: str, max_chars: int = 15, max_
     return str(path)
 
 
-def split_script(script: str, parts: int = 4) -> list[str]:
-    script = " ".join(script.replace("\n", " ").split())
-    if not script:
-        return []
-    words = script.split()
-    if not words:
-        return []
-    size = max(1, len(words) // parts)
-    chunks = []
-    start = 0
-    for idx in range(parts):
-        end = len(words) if idx == parts - 1 else min(len(words), start + size)
-        chunk = " ".join(words[start:end]).strip()
-        if chunk:
-            chunks.append(chunk)
-        start = end
-        if start >= len(words):
-            break
-    return chunks
-
-
-def caption_filters(job: dict, job_id: str, start_time: int, end_time: int) -> str:
-    chunks = split_script(job.get("script", ""), 4)
-    if not chunks:
-        return ""
-    total = max(1, end_time - start_time)
-    slot = total / len(chunks)
-    filters = ""
-    for idx, chunk in enumerate(chunks):
-        file_path = write_text_file(job_id, f"caption_{idx}", chunk, max_chars=24, max_lines=2)
-        a = start_time + slot * idx
-        b = start_time + slot * (idx + 1)
-        filters += (
-            f",drawbox=x=80:y=1290:w=920:h=210:color=black@0.68:t=fill:enable='between(t,{a:.2f},{b:.2f})'"
-            f",drawtext=textfile={file_path}:fontcolor=white:fontsize=54:line_spacing=10:"
-            f"x=(w-text_w)/2:y=1345:enable='between(t,{a:.2f},{b:.2f})'"
-        )
-    return filters
-
-
 def common_output_args(output_path: Path) -> list[str]:
     return [
         "-map", "[outv]",
@@ -196,6 +256,49 @@ def common_output_args(output_path: Path) -> list[str]:
     ]
 
 
+def scene_caption_filters(job: dict, job_id: str, y: int = 1320) -> str:
+    filters = ""
+    scenes = job.get("scenes") or []
+    for scene in scenes:
+        if scene["role"] in {"GANCHO", "CTA"}:
+            continue
+        text = scene.get("spoken_text") or scene.get("overlay") or ""
+        file_path = write_text_file(job_id, f"scene_{scene['index']}", text, max_chars=24, max_lines=2)
+        a = scene["start"]
+        b = scene["end"]
+        filters += (
+            f",drawbox=x=70:y={y}:w=940:h=230:color=black@0.62:t=fill:enable='between(t,{a:.2f},{b:.2f})'"
+            f",drawtext=textfile={file_path}:fontcolor=white:fontsize=52:line_spacing=10:"
+            f"x=(w-text_w)/2:y={y + 58}:enable='between(t,{a:.2f},{b:.2f})'"
+        )
+    return filters
+
+
+def build_planner_template(job: dict, output_path: Path) -> list[str]:
+    job_id = output_path.stem
+    seconds = job["seconds"]
+    scenes = job.get("scenes") or generate_plan(job.get("script", ""), job["hook"], job["middle"], job["cta"], seconds)
+    hook_scene = scenes[0]
+    cta_scene = scenes[-1]
+    hook_file = write_text_file(job_id, "planner_hook", hook_scene["overlay"], 18, 3)
+    cta_file = write_text_file(job_id, "planner_cta", cta_scene["overlay"], 18, 3)
+    captions = scene_caption_filters(job, job_id, 1320)
+
+    filter_complex = (
+        f"[0:v]scale=1215:2160:force_original_aspect_ratio=increase,crop=1080:1920,"
+        f"eq=contrast=1.12:brightness=0.02:saturation=1.08,unsharp=5:5:0.45,"
+        f"drawbox=x=0:y=0:w=1080:h=310:color=black@0.64:t=fill:enable='between(t,{hook_scene['start']:.2f},{hook_scene['end']:.2f})',"
+        f"drawtext=textfile={hook_file}:fontcolor=white:fontsize=64:line_spacing=12:"
+        f"box=1:boxcolor=red@0.58:boxborderw=18:x=(w-text_w)/2:y=82:enable='between(t,{hook_scene['start']:.2f},{hook_scene['end']:.2f})'"
+        f"{captions},"
+        f"drawbox=x=0:y=1535:w=1080:h=305:color=black@0.76:t=fill:enable='between(t,{cta_scene['start']:.2f},{cta_scene['end']:.2f})',"
+        f"drawtext=textfile={cta_file}:fontcolor=yellow:fontsize=62:line_spacing=12:"
+        f"x=(w-text_w)/2:y=1610:enable='between(t,{cta_scene['start']:.2f},{cta_scene['end']:.2f})',"
+        f"drawtext=text='Sol.IA Planner':fontcolor=white@0.68:fontsize=26:x=w-text_w-45:y=h-65[outv]"
+    )
+    return ["ffmpeg", "-y", "-t", str(seconds), "-i", job["input_path"], "-filter_complex", filter_complex, *common_output_args(output_path)]
+
+
 def build_split_template(job: dict, output_path: Path) -> list[str]:
     job_id = output_path.stem
     seconds = job["seconds"]
@@ -205,7 +308,7 @@ def build_split_template(job: dict, output_path: Path) -> list[str]:
 
     filter_complex = (
         f"[0:v]scale=620:1920:force_original_aspect_ratio=increase,crop=620:1920,"
-        f"eq=contrast=1.22:saturation=1.15,unsharp=5:5:0.8[left];"
+        f"eq=contrast=1.12:brightness=0.03:saturation=1.07,unsharp=5:5:0.45[left];"
         f"color=c=0x070707:s=460x1920:d={seconds}[rightbase];"
         f"[rightbase]drawbox=x=0:y=0:w=460:h=1920:color=white@0.04:t=fill,"
         f"drawtext=textfile={hook_file}:fontcolor=white:fontsize=54:line_spacing=12:"
@@ -221,30 +324,7 @@ def build_split_template(job: dict, output_path: Path) -> list[str]:
 
 
 def build_punch_template(job: dict, output_path: Path) -> list[str]:
-    job_id = output_path.stem
-    seconds = job["seconds"]
-    hook_file = write_text_file(job_id, "hook", job["hook"], 18, 3)
-    middle_file = write_text_file(job_id, "middle", job["middle"], 20, 2)
-    cta_file = write_text_file(job_id, "cta", job["cta"], 18, 3)
-    cta_start = max(seconds - 7, 5)
-    captions = caption_filters(job, job_id, 7, int(cta_start))
-
-    filter_complex = (
-        f"[0:v]scale=1215:2160:force_original_aspect_ratio=increase,crop=1080:1920,"
-        f"eq=contrast=1.23:saturation=1.16,unsharp=5:5:0.7,"
-        f"drawbox=x=0:y=0:w=1080:h=300:color=black@0.72:t=fill:enable='between(t,0,6)',"
-        f"drawtext=textfile={hook_file}:fontcolor=white:fontsize=66:line_spacing=12:"
-        f"box=1:boxcolor=red@0.72:boxborderw=22:x=(w-text_w)/2:y=70:enable='between(t,0,6)'"
-        f"{captions},"
-        f"drawbox=x=0:y=1540:w=1080:h=260:color=black@0.70:t=fill:enable='between(t,10,22)',"
-        f"drawtext=textfile={middle_file}:fontcolor=yellow:fontsize=52:line_spacing=12:"
-        f"x=(w-text_w)/2:y=1600:enable='between(t,10,22)',"
-        f"drawbox=x=0:y=1515:w=1080:h=305:color=black@0.78:t=fill:enable='gte(t,{cta_start})',"
-        f"drawtext=textfile={cta_file}:fontcolor=white:fontsize=64:line_spacing=12:"
-        f"x=(w-text_w)/2:y=1580:enable='gte(t,{cta_start})',"
-        f"drawtext=text='Sol.IA Cut':fontcolor=white@0.72:fontsize=28:x=w-text_w-45:y=h-70[outv]"
-    )
-    return ["ffmpeg", "-y", "-t", str(seconds), "-i", job["input_path"], "-filter_complex", filter_complex, *common_output_args(output_path)]
+    return build_planner_template(job, output_path)
 
 
 def build_noir_template(job: dict, output_path: Path) -> list[str]:
@@ -252,17 +332,17 @@ def build_noir_template(job: dict, output_path: Path) -> list[str]:
     seconds = job["seconds"]
     hook_file = write_text_file(job_id, "hook", job["hook"], 17, 3)
     cta_file = write_text_file(job_id, "cta", job["cta"], 18, 3)
+    captions = scene_caption_filters(job, job_id, 1300)
     cta_start = max(seconds - 7, 5)
-    captions = caption_filters(job, job_id, 7, int(cta_start))
 
     filter_complex = (
         f"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-        f"eq=contrast=1.18:brightness=-0.035:saturation=0.82,vignette=PI/4,"
-        f"drawbox=x=70:y=120:w=940:h=300:color=black@0.65:t=fill:enable='between(t,0,7)',"
+        f"eq=contrast=1.08:brightness=0.01:saturation=0.92,vignette=PI/5,"
+        f"drawbox=x=70:y=120:w=940:h=300:color=black@0.58:t=fill:enable='between(t,0,7)',"
         f"drawtext=textfile={hook_file}:fontcolor=white:fontsize=60:line_spacing=12:"
         f"x=(w-text_w)/2:y=180:enable='between(t,0,7)'"
         f"{captions},"
-        f"drawbox=x=70:y=1515:w=940:h=280:color=black@0.66:t=fill:enable='gte(t,{cta_start})',"
+        f"drawbox=x=70:y=1515:w=940:h=280:color=black@0.60:t=fill:enable='gte(t,{cta_start})',"
         f"drawtext=textfile={cta_file}:fontcolor=white:fontsize=52:line_spacing=12:"
         f"x=(w-text_w)/2:y=1590:enable='gte(t,{cta_start})'[outv]"
     )
@@ -281,7 +361,7 @@ def build_product_template(job: dict, output_path: Path) -> list[str]:
 
     filter_complex = (
         f"[0:v]scale=620:1920:force_original_aspect_ratio=increase,crop=620:1920,"
-        f"eq=contrast=1.22:saturation=1.14,unsharp=5:5:0.7[left];"
+        f"eq=contrast=1.12:brightness=0.03:saturation=1.06,unsharp=5:5:0.45[left];"
         f"color=c=0x080808:s=460x1920:d={seconds}[rightbase];"
         f"[1:v]scale=330:-1,format=rgba[prod];"
         f"[rightbase][prod]overlay=x=(W-w)/2:y=690:enable='gte(t,3)'[rightprod];"
@@ -306,14 +386,14 @@ def build_product_template(job: dict, output_path: Path) -> list[str]:
 
 
 def build_command(job: dict, output_path: Path) -> list[str]:
-    template = job.get("template", "punch")
+    template = job.get("template", "planner")
     if template == "split":
         return build_split_template(job, output_path)
     if template == "noir":
         return build_noir_template(job, output_path)
     if template == "product":
         return build_product_template(job, output_path)
-    return build_punch_template(job, output_path)
+    return build_planner_template(job, output_path)
 
 
 def process_video(job_id: str):
@@ -325,6 +405,9 @@ def process_video(job_id: str):
     output_path = OUTPUT_DIR / output_name
     cmd = build_command(job, output_path)
     subprocess.run(cmd, check=True, capture_output=True, text=True)
+
+    last_path = OUTPUT_DIR / "ULTIMO_SOLIA_EDITADO.mp4"
+    shutil.copyfile(output_path, last_path)
 
     job["status"] = "done"
     job["result"] = output_name
@@ -339,7 +422,7 @@ async def worker():
                 await asyncio.to_thread(process_video, job_id)
         except subprocess.CalledProcessError as exc:
             jobs[job_id]["status"] = "error"
-            jobs[job_id]["error"] = exc.stderr[-2500:] if exc.stderr else str(exc)
+            jobs[job_id]["error"] = exc.stderr[-3000:] if exc.stderr else str(exc)
         except Exception as exc:
             jobs[job_id]["status"] = "error"
             jobs[job_id]["error"] = str(exc)
