@@ -1,18 +1,12 @@
-# Sol.IA Motion / UGC Cut
+# Sol.IA Motion Planner / UGC Cut
 
-Aplicativo local para editar vídeos curtos no próprio computador.
+Aplicativo local para planejar e renderizar vídeos curtos no próprio computador.
 
-Esta versão é uma base funcional: você roda localmente, sobe seus vídeos, coloca textos, opcionalmente adiciona capa/imagem de produto e gera um MP4 vertical para Reels, TikTok ou Shorts.
+## Estado real
 
-## Diagnóstico honesto
+O projeto já roda localmente, recebe vídeo, gera plano por cenas, renderiza com FFmpeg e exporta MP4 vertical.
 
-O app já renderiza vídeos, mas ainda não compete visualmente com Captions, CapCut ou editores premium.
-
-Hoje ele é um motor local com templates simples. Para virar um editor excelente, precisa evoluir em três frentes:
-
-1. timeline visual por cenas;
-2. transcrição/legenda automática;
-3. sistema visual premium com templates melhores.
+Ele **ainda não compete visualmente com Captions ou CapCut**. Hoje ele é uma fundação técnica + um primeiro cérebro editorial. O visual ainda precisa evoluir muito.
 
 ## O que já funciona
 
@@ -20,16 +14,20 @@ Hoje ele é um motor local com templates simples. Para virar um editor excelente
 - Upload de vídeo.
 - Upload opcional de imagem/capa de produto.
 - Campo de roteiro manual/texto aproximado do vídeo.
-- Fila de processamento local.
+- Geração de plano por cenas via endpoint `/plan`.
+- Cenas com função editorial:
+  - GANCHO;
+  - DOR;
+  - VIRADA;
+  - PRODUTO;
+  - CTA.
 - Renderização com FFmpeg.
 - Conversão para vídeo vertical.
-- Templates simples:
-  - Gancho Cinemático UGC;
-  - Produto + Autoridade;
-  - Tela dividida UGC;
-  - Noir premium.
-- Blocos de texto/legenda simulada a partir do roteiro manual.
 - Download do vídeo final.
+- Acesso ao último vídeo por `/latest`.
+- Acesso ao último plano JSON por `/latest-plan`.
+- Salvamento do último vídeo em `outputs/ULTIMO_SOLIA_EDITADO.mp4`.
+- Salvamento do último plano em `outputs/ULTIMO_PLANO_SOLIA.json`.
 
 ## O que ainda não faz bem
 
@@ -44,66 +42,34 @@ Hoje ele é um motor local com templates simples. Para virar um editor excelente
 - Timeline editável.
 - Preview visual refinado.
 
-## Limitação atual
+## Diagnóstico honesto
 
-O app usa FFmpeg para aplicar textos e overlays. FFmpeg é excelente para processar vídeo, cortar, converter e renderizar, mas não é o melhor caminho para criar visual premium sozinho.
+O app usa FFmpeg para aplicar textos, caixas e overlays. FFmpeg é excelente para processar vídeo, cortar, converter e renderizar, mas não é o melhor caminho sozinho para criar visual premium.
 
-Para competir visualmente com Captions, o caminho recomendado é:
+Para chegar perto do Captions, o produto precisa evoluir para:
 
 ```text
 Upload → transcrição/roteiro → timeline JSON → composição visual premium → render final
 ```
 
-Provável stack visual futura:
+Caminho provável:
 
 ```text
 FFmpeg + Remotion/React
 ```
 
-## Documentação de produto
+FFmpeg continua como motor técnico. Remotion/React entra para criar templates bonitos, animações, cards, transições e motion graphics.
 
-Foi adicionada uma análise específica sobre o gap entre Captions e Sol.IA Motion:
+## Como instalar
 
-```text
-docs/CAPTIONS_GAP_ANALYSIS.md
-```
-
-Ela explica o que o Captions tem, o que dá para modelar, o que falta e qual roadmap seguir.
-
-## Instalação no computador
-
-### 1. Instale o Python
-
-Baixe em:
-
-```text
-https://www.python.org/downloads/
-```
-
-### 2. Instale o FFmpeg
-
-No Mac:
-
-```bash
-brew install ffmpeg
-```
-
-No Linux:
-
-```bash
-sudo apt install ffmpeg
-```
-
-No Windows, instale pelo site oficial do FFmpeg ou Chocolatey.
-
-### 3. Baixe o repositório
+### 1. Baixar o repositório
 
 ```bash
 git clone https://github.com/Sollimastudio/motion-hacker.git
 cd motion-hacker
 ```
 
-### 4. Instale as dependências
+### 2. Criar ambiente Python
 
 ```bash
 python -m venv .venv
@@ -118,22 +84,36 @@ source .venv/bin/activate
 Windows:
 
 ```bash
-.venv\Scripts\activate
+.venv\\Scripts\\activate
 ```
 
-Depois:
+### 3. Instalar dependências
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 5. Rode o app
+### 4. Instalar FFmpeg
+
+Mac:
+
+```bash
+brew install ffmpeg
+```
+
+Linux:
+
+```bash
+sudo apt install ffmpeg
+```
+
+### 5. Rodar o app
 
 ```bash
 uvicorn main:app --reload
 ```
 
-Abra no navegador:
+Abrir:
 
 ```text
 http://127.0.0.1:8000
@@ -141,67 +121,69 @@ http://127.0.0.1:8000
 
 ## Como usar
 
-1. Clique em **Vídeo bruto**.
-2. Escolha um vídeo do seu computador.
-3. Opcionalmente, envie uma imagem/capa do produto.
-4. Escolha um modelo.
-5. Preencha:
-   - frase inicial;
-   - frase do meio;
-   - CTA final;
-   - texto aproximado do vídeo/roteiro manual.
-6. Escolha a duração.
-7. Clique em **Editar meu vídeo**.
-8. Aguarde processar.
-9. Clique em **Baixar vídeo pronto**.
+1. Escolha o vídeo bruto.
+2. Opcionalmente, envie uma imagem/capa de produto.
+3. Escolha o modelo.
+4. Preencha gancho, frase de sustentação e CTA.
+5. Cole o texto aproximado do vídeo.
+6. Clique em **Gerar plano de edição**.
+7. Confira a timeline por cenas.
+8. Clique em **Renderizar vídeo**.
+9. Baixe o vídeo pronto.
 
-## Onde ficam os arquivos
+## Arquivos importantes
 
 - Vídeos enviados: `uploads/`
 - Imagens/capas: `assets/`
 - Textos temporários: `text_assets/`
 - Vídeos prontos: `outputs/`
+- Último vídeo: `outputs/ULTIMO_SOLIA_EDITADO.mp4`
+- Último plano: `outputs/ULTIMO_PLANO_SOLIA.json`
 
 ## Roadmap realista
 
-### 0.4 — Timeline por roteiro
+### 0.4.2 — Storyboard exportável
 
-- Transformar roteiro manual em cenas.
-- Gerar timeline JSON.
-- Usar timeline para posicionar textos, blocos e CTA.
-- Melhorar nomes de arquivos e histórico.
+- Gerar storyboard em Markdown.
+- Sugerir B-roll/imagens por cena.
+- Sugerir direção de corte por cena.
+- Criar plano que também sirva para editar no Captions/CapCut.
 
-### 0.5 — B-roll manual
+### 0.5 — Whisper local
 
-- Upload de múltiplas imagens.
-- Alternância entre rosto, imagem e produto.
-- Templates de vídeo com apoio visual.
+- Transcrever vídeo automaticamente.
+- Preencher o roteiro sem a usuária precisar colar texto.
+- Gerar cenas a partir da fala real.
 
-### 0.6 — Whisper local
-
-- Transcrição automática.
-- Timestamps por frase.
-- Roteiro automático a partir do áudio.
-
-### 0.7 — Corte de silêncio
+### 0.6 — Corte de silêncio
 
 - Detectar pausas.
 - Remover espaços mortos.
 - Preservar frases completas.
 
-### 0.8 — Legendas premium
+### 0.7 — Legendas premium
 
 - Legenda por frase.
 - Destaque de palavras.
 - Presets visuais de legenda.
+
+### 0.8 — B-roll e imagens
+
+- Upload de múltiplas imagens.
+- Alternância entre rosto, imagem, produto e CTA.
+- Futuro: banco de imagens ou geração por IA.
 
 ### 0.9 — Compositor visual moderno
 
 - Migrar templates premium para Remotion/React ou equivalente.
 - Animações, cards, motion graphics e composição mais bonita.
 
-## Observação importante
+## Recomendação prática
 
-Este app roda localmente. Ele não publica nada, não envia seus vídeos para redes sociais e não precisa de login.
+Para produção profissional imediata, use Captions/CapCut enquanto o Sol.IA evolui.
 
-Ele ainda é um projeto em construção. Para produção profissional imediata, use Captions/CapCut enquanto o Sol.IA evolui.
+Para desenvolvimento do produto, siga a ordem:
+
+```text
+Planejamento por cenas → Storyboard → Whisper → Corte de silêncio → Legendas premium → B-roll → Remotion
+```
