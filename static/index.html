@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sol.IA UGC Cut</title>
+  <title>Sol.IA UGC Cut 0.3</title>
   <style>
     :root {
       --bg: #08080b;
@@ -13,6 +13,7 @@
       --gold: #d4af37;
       --wine: #5a0712;
       --green: #6ee7a8;
+      --red: #c0182d;
     }
     * { box-sizing: border-box; }
     body {
@@ -26,7 +27,7 @@
       place-items: center;
     }
     .app {
-      width: min(980px, 100%);
+      width: min(1040px, 100%);
       display: grid;
       grid-template-columns: 1.1fr .9fr;
       gap: 22px;
@@ -57,6 +58,7 @@
       padding: 14px 15px;
       font-size: 16px;
     }
+    input[type="file"] { padding: 16px; }
     button {
       margin-top: 20px;
       border: 0;
@@ -64,7 +66,9 @@
       background: linear-gradient(135deg, var(--gold), #fff1a6);
       color: #181000;
       font-weight: 900;
+      transition: transform .15s ease;
     }
+    button:hover { transform: translateY(-1px); }
     button:disabled { opacity: .55; cursor: wait; }
     .status {
       margin-top: 18px;
@@ -99,53 +103,84 @@
       text-transform: uppercase;
       margin-bottom: 18px;
     }
+    .hint {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .pill {
+      display: inline-block;
+      background: rgba(192,24,45,.18);
+      border: 1px solid rgba(192,24,45,.35);
+      color: #ffd4da;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      margin-right: 6px;
+    }
     @media (max-width: 850px) { .app { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <main class="app">
     <section class="card">
-      <div class="badge">local • ffmpeg • ugc</div>
+      <div class="badge">local • ffmpeg • ugc 0.3</div>
       <h1>Sol.IA <span class="gold">UGC Cut</span></h1>
-      <p>Suba um vídeo, escolha um modelo e gere um corte visual pronto para testar. Agora sem aquela tela de API com cara de declaração de imposto emocional.</p>
+      <p>Suba um vídeo, escolha um modelo e gere um corte vertical. Esta versão já aceita capa/imagem de produto para criar vídeo com cara de venda, não só faixa gritando no canto.</p>
       <form id="form">
         <label>Vídeo bruto</label>
         <input name="file" type="file" accept="video/*" required />
+
+        <label>Imagem do produto / capa do eBook (opcional)</label>
+        <input name="product" type="file" accept="image/*" />
+        <div class="hint">Use no modelo “Produto + Autoridade”. Pode ser capa do Magnetus, Antídoto, Posicione-se ou logo.</div>
+
         <label>Modelo</label>
         <select name="template">
+          <option value="punch">Gancho Cinemático UGC</option>
+          <option value="product">Produto + Autoridade</option>
           <option value="split">Tela dividida UGC</option>
-          <option value="hook">Gancho gigante</option>
           <option value="noir">Noir premium</option>
         </select>
+
         <label>Frase inicial</label>
         <input name="hook" value="NAO E DEDO PODRE" />
+
         <label>Frase do meio</label>
         <input name="middle" value="E PADRAO REPETINDO" />
+
         <label>CTA final</label>
         <input name="cta" value="POSICIONE-SE" />
+
         <label>Duração em segundos</label>
         <input name="seconds" type="number" value="30" min="5" max="90" />
+
         <button id="button">Editar meu vídeo</button>
       </form>
       <div id="status" class="status">Aguardando vídeo. O algoritmo ainda não aceita desculpa como arquivo.</div>
       <a id="download" class="download" href="#">Baixar vídeo pronto</a>
     </section>
+
     <aside class="card">
       <h2>O que essa versão faz</h2>
+      <p><span class="pill">Novo</span>Imagem de produto na lateral quando você envia capa do eBook.</p>
       <ul class="template-list">
+        <li><strong>Gancho Cinemático:</strong> vídeo em tela cheia com tarjas, gancho e CTA.</li>
+        <li><strong>Produto + Autoridade:</strong> você falando + capa do eBook no painel lateral.</li>
         <li><strong>Tela dividida:</strong> você de um lado, frase forte do outro.</li>
-        <li><strong>Gancho gigante:</strong> frase enorme no começo e CTA no final.</li>
         <li><strong>Noir premium:</strong> visual mais escuro, editorial e elegante.</li>
-        <li>Gera MP4 vertical para Reels, TikTok e Shorts.</li>
       </ul>
-      <p>Próximo salto: legenda automática, corte de silêncio e imagem do produto na tela.</p>
+      <p>Próximo salto: legenda automática com Whisper, corte de silêncio e templates com animação real. Porque por enquanto ele edita, mas ainda não tem o drama luxuoso do Captions. Um dia o pobre fica chique.</p>
     </aside>
   </main>
+
   <script>
     const form = document.getElementById("form");
     const statusBox = document.getElementById("status");
     const button = document.getElementById("button");
     const download = document.getElementById("download");
+
     async function poll(jobId) {
       const timer = setInterval(async () => {
         const res = await fetch(`/job/${jobId}`);
@@ -166,6 +201,7 @@
         }
       }, 1200);
     }
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       button.disabled = true;
