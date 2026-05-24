@@ -15,13 +15,15 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "outputs"
 STATIC_DIR = BASE_DIR / "static"
 TEXT_DIR = BASE_DIR / "text_assets"
+ASSET_DIR = BASE_DIR / "assets"
 
 UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 STATIC_DIR.mkdir(exist_ok=True)
 TEXT_DIR.mkdir(exist_ok=True)
+ASSET_DIR.mkdir(exist_ok=True)
 
-app = FastAPI(title="Sol.IA UGC Cut 0.2")
+app = FastAPI(title="Sol.IA UGC Cut 0.3")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 jobs: dict[str, dict] = {}
@@ -45,24 +47,33 @@ async def home():
 @app.post("/upload")
 async def upload_video(
     file: UploadFile = File(...),
-    template: str = Form("split"),
+    product: Optional[UploadFile] = File(None),
+    template: str = Form("punch"),
     hook: str = Form("NAO E DEDO PODRE"),
     middle: str = Form("E PADRAO REPETINDO"),
     cta: str = Form("POSICIONE-SE"),
     seconds: int = Form(30),
 ):
     job_id = str(uuid.uuid4())
-    ext = Path(file.filename or "video.mp4").suffix or ".mp4"
-    input_path = UPLOAD_DIR / f"{job_id}{ext}"
+    video_ext = Path(file.filename or "video.mp4").suffix or ".mp4"
+    input_path = UPLOAD_DIR / f"{job_id}{video_ext}"
 
     with input_path.open("wb") as f:
         shutil.copyfileobj(file.file, f)
+
+    product_path = None
+    if product and product.filename:
+        product_ext = Path(product.filename).suffix.lower() or ".png"
+        product_path = ASSET_DIR / f"{job_id}_product{product_ext}"
+        with product_path.open("wb") as f:
+            shutil.copyfileobj(product.file, f)
 
     seconds = max(5, min(int(seconds), 90))
 
     jobs[job_id] = {
         "status": "queued",
         "input_path": str(input_path),
+        "product_path": str(product_path) if product_path else None,
         "template": template,
         "hook": hook.strip() or "NAO E DEDO PODRE",
         "middle": middle.strip() or "E PADRAO REPETINDO",
@@ -100,14 +111,15 @@ async def download(filename: str):
     return FileResponse(str(path), media_type="video/mp4", filename=filename)
 
 
-def wrap_text(text: str, max_chars: int = 16) -> str:
+def wrap_text(text: str, max_chars: int = 15, max_lines: int = 4) -> str:
     words = text.upper().split()
     lines = []
     current = ""
 
     for word in words:
-        if len((current + " " + word).strip()) <= max_chars:
-            current = (current + " " + word).strip()
+        candidate = (current + " " + word).strip()
+        if len(candidate) <= max_chars:
+            current = candidate
         else:
             if current:
                 lines.append(current)
@@ -116,114 +128,153 @@ def wrap_text(text: str, max_chars: int = 16) -> str:
     if current:
         lines.append(current)
 
-    return "\n".join(lines[:4])
+    return "\n".join(lines[:max_lines])
 
 
-def write_text_file(job_id: str, name: str, text: str) -> str:
+def write_text_file(job_id: str, name: str, text: str, max_chars: int = 15, max_lines: int = 4) -> str:
     path = TEXT_DIR / f"{job_id}_{name}.txt"
-    path.write_text(wrap_text(text), encoding="utf-8")
+    path.write_text(wrap_text(text, max_chars=max_chars, max_lines=max_lines), encoding="utf-8")
     return str(path)
+
+
+def common_output_args(output_path: Path) -> list[str]:
+    return [
+        "-map", "[outv]",
+        "-map", "0:a:0?",
+        "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-preset", "ultrafast",
+        "-crf", "25",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-movflags", "+faststart",
+        str(output_path),
+    ]
 
 
 def build_split_template(job: dict, output_path: Path) -> list[str]:
     job_id = output_path.stem
     seconds = job["seconds"]
-    hook_file = write_text_file(job_id, "hook", job["hook"])
-    middle_file = write_text_file(job_id, "middle", job["middle"])
-    cta_file = write_text_file(job_id, "cta", job["cta"])
+    hook_file = write_text_file(job_id, "hook", job["hook"], 13)
+    middle_file = write_text_file(job_id, "middle", job["middle"], 14)
+    cta_file = write_text_file(job_id, "cta", job["cta"], 14)
 
     filter_complex = (
-        f"[0:v]scale=620:1920:force_original_aspect_ratio=increase,"
-        f"crop=620:1920,eq=contrast=1.22:saturation=1.15,unsharp=5:5:0.8[left];"
-        f"color=c=black:s=460x1920:d={seconds}[right];"
-        f"[right]"
-        f"drawtext=textfile={hook_file}:fontcolor=white:fontsize=52:line_spacing=12:"
+        f"[0:v]scale=620:1920:force_original_aspect_ratio=increase,crop=620:1920,"
+        f"eq=contrast=1.22:saturation=1.15,unsharp=5:5:0.8[left];"
+        f"color=c=0x070707:s=460x1920:d={seconds}[rightbase];"
+        f"[rightbase]"
+        f"drawbox=x=0:y=0:w=460:h=1920:color=white@0.04:t=fill,"
+        f"drawtext=textfile={hook_file}:fontcolor=white:fontsize=54:line_spacing=12:"
         f"x=(w-text_w)/2:y=220:enable='between(t,0,7)',"
-        f"drawtext=textfile={middle_file}:fontcolor=yellow:fontsize=44:line_spacing=12:"
-        f"x=(w-text_w)/2:y=520:enable='between(t,7,20)',"
-        f"drawtext=textfile={cta_file}:fontcolor=white:fontsize=48:line_spacing=12:"
-        f"x=(w-text_w)/2:y=900:enable='gte(t,20)',"
-        f"drawtext=text='Sol.IA Cut':fontcolor=white@0.75:fontsize=28:"
-        f"x=(w-text_w)/2:y=1700[righttext];"
-        f"[left][righttext]hstack=inputs=2[outv]"
+        f"drawtext=textfile={middle_file}:fontcolor=yellow:fontsize=46:line_spacing=12:"
+        f"x=(w-text_w)/2:y=560:enable='between(t,7,20)',"
+        f"drawtext=textfile={cta_file}:fontcolor=white:fontsize=50:line_spacing=12:"
+        f"x=(w-text_w)/2:y=940:enable='gte(t,20)',"
+        f"drawtext=text='Sol.IA Cut':fontcolor=white@0.72:fontsize=28:x=(w-text_w)/2:y=1700[right];"
+        f"[left][right]hstack=inputs=2[outv]"
     )
 
-    return [
-        "ffmpeg", "-y", "-t", str(seconds), "-i", job["input_path"],
-        "-filter_complex", filter_complex,
-        "-map", "[outv]", "-map", "0:a?",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-preset", "ultrafast", "-crf", "26",
-        "-c:a", "aac", "-b:a", "128k",
-        "-movflags", "+faststart", str(output_path),
-    ]
+    return ["ffmpeg", "-y", "-t", str(seconds), "-i", job["input_path"], "-filter_complex", filter_complex, *common_output_args(output_path)]
 
 
-def build_hook_template(job: dict, output_path: Path) -> list[str]:
+def build_punch_template(job: dict, output_path: Path) -> list[str]:
     job_id = output_path.stem
     seconds = job["seconds"]
-    hook_file = write_text_file(job_id, "hook", job["hook"])
-    cta_file = write_text_file(job_id, "cta", job["cta"])
+    hook_file = write_text_file(job_id, "hook", job["hook"], 18, 3)
+    middle_file = write_text_file(job_id, "middle", job["middle"], 20, 2)
+    cta_file = write_text_file(job_id, "cta", job["cta"], 18, 3)
     cta_start = max(seconds - 7, 5)
 
     filter_complex = (
-        f"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,"
-        f"crop=1080:1920,eq=contrast=1.28:saturation=1.18,unsharp=5:5:0.8,"
-        f"drawbox=x=0:y=0:w=1080:h=330:color=black@0.78:t=fill:enable='between(t,0,6)',"
-        f"drawtext=textfile={hook_file}:fontcolor=white:fontsize=68:line_spacing=14:"
-        f"x=(w-text_w)/2:y=95:enable='between(t,0,6)',"
-        f"drawbox=x=0:y=1640:w=1080:h=280:color=black@0.75:t=fill:enable='gte(t,{cta_start})',"
-        f"drawtext=textfile={cta_file}:fontcolor=yellow:fontsize=58:line_spacing=12:"
-        f"x=(w-text_w)/2:y=1710:enable='gte(t,{cta_start})'[outv]"
+        f"[0:v]scale=1215:2160:force_original_aspect_ratio=increase,crop=1080:1920,"
+        f"eq=contrast=1.23:saturation=1.16,unsharp=5:5:0.7,"
+        f"drawbox=x=0:y=0:w=1080:h=300:color=black@0.72:t=fill:enable='between(t,0,6)',"
+        f"drawtext=textfile={hook_file}:fontcolor=white:fontsize=66:line_spacing=12:"
+        f"box=1:boxcolor=red@0.72:boxborderw=22:x=(w-text_w)/2:y=70:enable='between(t,0,6)',"
+        f"drawbox=x=0:y=1540:w=1080:h=260:color=black@0.70:t=fill:enable='between(t,10,22)',"
+        f"drawtext=textfile={middle_file}:fontcolor=yellow:fontsize=52:line_spacing=12:"
+        f"x=(w-text_w)/2:y=1600:enable='between(t,10,22)',"
+        f"drawbox=x=0:y=1515:w=1080:h=305:color=black@0.78:t=fill:enable='gte(t,{cta_start})',"
+        f"drawtext=textfile={cta_file}:fontcolor=white:fontsize=64:line_spacing=12:"
+        f"x=(w-text_w)/2:y=1580:enable='gte(t,{cta_start})',"
+        f"drawtext=text='Sol.IA Cut':fontcolor=white@0.72:fontsize=28:x=w-text_w-45:y=h-70"
+        f"[outv]"
     )
 
-    return [
-        "ffmpeg", "-y", "-t", str(seconds), "-i", job["input_path"],
-        "-filter_complex", filter_complex,
-        "-map", "[outv]", "-map", "0:a?",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-preset", "ultrafast", "-crf", "26",
-        "-c:a", "aac", "-b:a", "128k",
-        "-movflags", "+faststart", str(output_path),
-    ]
+    return ["ffmpeg", "-y", "-t", str(seconds), "-i", job["input_path"], "-filter_complex", filter_complex, *common_output_args(output_path)]
 
 
 def build_noir_template(job: dict, output_path: Path) -> list[str]:
     job_id = output_path.stem
     seconds = job["seconds"]
-    hook_file = write_text_file(job_id, "hook", job["hook"])
-    cta_file = write_text_file(job_id, "cta", job["cta"])
+    hook_file = write_text_file(job_id, "hook", job["hook"], 17, 3)
+    cta_file = write_text_file(job_id, "cta", job["cta"], 18, 3)
     cta_start = max(seconds - 7, 5)
 
     filter_complex = (
-        f"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,"
-        f"crop=1080:1920,eq=contrast=1.16:brightness=-0.03:saturation=0.82,vignette=PI/4,"
-        f"drawbox=x=80:y=120:w=920:h=260:color=black@0.62:t=fill:enable='between(t,0,6)',"
+        f"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
+        f"eq=contrast=1.18:brightness=-0.035:saturation=0.82,vignette=PI/4,"
+        f"drawbox=x=70:y=120:w=940:h=300:color=black@0.65:t=fill:enable='between(t,0,7)',"
         f"drawtext=textfile={hook_file}:fontcolor=white:fontsize=60:line_spacing=12:"
-        f"x=(w-text_w)/2:y=170:enable='between(t,0,6)',"
-        f"drawbox=x=80:y=1550:w=920:h=240:color=black@0.62:t=fill:enable='gte(t,{cta_start})',"
-        f"drawtext=textfile={cta_file}:fontcolor=white:fontsize=50:line_spacing=12:"
-        f"x=(w-text_w)/2:y=1620:enable='gte(t,{cta_start})'[outv]"
+        f"x=(w-text_w)/2:y=180:enable='between(t,0,7)',"
+        f"drawbox=x=70:y=1515:w=940:h=280:color=black@0.66:t=fill:enable='gte(t,{cta_start})',"
+        f"drawtext=textfile={cta_file}:fontcolor=white:fontsize=52:line_spacing=12:"
+        f"x=(w-text_w)/2:y=1590:enable='gte(t,{cta_start})'"
+        f"[outv]"
+    )
+
+    return ["ffmpeg", "-y", "-t", str(seconds), "-i", job["input_path"], "-filter_complex", filter_complex, *common_output_args(output_path)]
+
+
+def build_product_template(job: dict, output_path: Path) -> list[str]:
+    # Se nao houver imagem do produto, usa a tela dividida normal.
+    if not job.get("product_path"):
+        return build_split_template(job, output_path)
+
+    job_id = output_path.stem
+    seconds = job["seconds"]
+    hook_file = write_text_file(job_id, "hook", job["hook"], 13)
+    middle_file = write_text_file(job_id, "middle", job["middle"], 14)
+    cta_file = write_text_file(job_id, "cta", job["cta"], 13)
+
+    filter_complex = (
+        f"[0:v]scale=620:1920:force_original_aspect_ratio=increase,crop=620:1920,"
+        f"eq=contrast=1.22:saturation=1.14,unsharp=5:5:0.7[left];"
+        f"color=c=0x080808:s=460x1920:d={seconds}[rightbase];"
+        f"[1:v]scale=330:-1,format=rgba[prod];"
+        f"[rightbase][prod]overlay=x=(W-w)/2:y=690:enable='gte(t,3)'[rightprod];"
+        f"[rightprod]"
+        f"drawtext=textfile={hook_file}:fontcolor=white:fontsize=46:line_spacing=10:"
+        f"x=(w-text_w)/2:y=160:enable='between(t,0,8)',"
+        f"drawtext=textfile={middle_file}:fontcolor=yellow:fontsize=38:line_spacing=10:"
+        f"x=(w-text_w)/2:y=470:enable='between(t,8,21)',"
+        f"drawbox=x=28:y=1410:w=404:h=210:color=red@0.70:t=fill:enable='gte(t,21)',"
+        f"drawtext=textfile={cta_file}:fontcolor=white:fontsize=42:line_spacing=10:"
+        f"x=(w-text_w)/2:y=1460:enable='gte(t,21)',"
+        f"drawtext=text='Sol.IA Cut':fontcolor=white@0.72:fontsize=26:x=(w-text_w)/2:y=1725[right];"
+        f"[left][right]hstack=inputs=2[outv]"
     )
 
     return [
-        "ffmpeg", "-y", "-t", str(seconds), "-i", job["input_path"],
+        "ffmpeg", "-y", "-t", str(seconds),
+        "-i", job["input_path"],
+        "-loop", "1", "-t", str(seconds), "-i", job["product_path"],
         "-filter_complex", filter_complex,
-        "-map", "[outv]", "-map", "0:a?",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-preset", "ultrafast", "-crf", "26",
-        "-c:a", "aac", "-b:a", "128k",
-        "-movflags", "+faststart", str(output_path),
+        *common_output_args(output_path),
     ]
 
 
 def build_command(job: dict, output_path: Path) -> list[str]:
-    template = job.get("template", "split")
-    if template == "hook":
-        return build_hook_template(job, output_path)
+    template = job.get("template", "punch")
+    if template == "split":
+        return build_split_template(job, output_path)
     if template == "noir":
         return build_noir_template(job, output_path)
-    return build_split_template(job, output_path)
+    if template == "product":
+        return build_product_template(job, output_path)
+    return build_punch_template(job, output_path)
 
 
 def process_video(job_id: str):
@@ -249,7 +300,7 @@ async def worker():
                 await asyncio.to_thread(process_video, job_id)
         except subprocess.CalledProcessError as exc:
             jobs[job_id]["status"] = "error"
-            jobs[job_id]["error"] = exc.stderr[-2000:] if exc.stderr else str(exc)
+            jobs[job_id]["error"] = exc.stderr[-2500:] if exc.stderr else str(exc)
         except Exception as exc:
             jobs[job_id]["status"] = "error"
             jobs[job_id]["error"] = str(exc)
