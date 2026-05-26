@@ -25,7 +25,7 @@ STATIC_DIR.mkdir(exist_ok=True)
 TEXT_DIR.mkdir(exist_ok=True)
 ASSET_DIR.mkdir(exist_ok=True)
 
-app = FastAPI(title="Sol.IA Motion Planner 0.4.1")
+app = FastAPI(title="Sol.IA Motion Planner 0.4.2")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 jobs: dict[str, dict] = {}
@@ -42,8 +42,7 @@ class JobStatus(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
-    index_path = STATIC_DIR / "index.html"
-    return index_path.read_text(encoding="utf-8")
+    return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
 
 @app.get("/latest")
@@ -74,10 +73,10 @@ async def plan_video(
     seconds = max(5, min(int(seconds), 90))
     scenes = generate_plan(script, hook, middle, cta, seconds, has_product=(template == "product"))
     return {
-        "version": "0.4.1",
+        "version": "0.4.2",
         "template": template,
         "seconds": seconds,
-        "render_note": "Plano editorial por cenas. Render limpo: menos escuro, menos texto repetido e menos poluicao visual.",
+        "render_note": "Planner corrigido: se houver imagem de produto no upload, ela aparece no render automaticamente.",
         "scenes": scenes,
     }
 
@@ -170,10 +169,7 @@ def chunk_words(text: str, max_chunks: int) -> list[str]:
     if not words:
         return []
     size = max(1, round(len(words) / max_chunks))
-    chunks = []
-    for i in range(0, len(words), size):
-        chunks.append(" ".join(words[i:i + size]))
-    return chunks[:max_chunks]
+    return [" ".join(words[i:i + size]) for i in range(0, len(words), size)][:max_chunks]
 
 
 def generate_plan(script: str, hook: str, middle: str, cta: str, seconds: int, has_product: bool = False) -> list[dict]:
@@ -209,9 +205,9 @@ def generate_plan(script: str, hook: str, middle: str, cta: str, seconds: int, h
             layer = "bottom"
         elif has_product and idx == scene_count - 2:
             role = "PRODUTO"
-            visual = "Capa/produto na lateral + voce falando"
+            visual = "Capa/produto em card visivel por cima do video"
             overlay = middle
-            layer = "side_product"
+            layer = "product_card"
         elif idx == 1:
             role = "DOR"
             visual = "Legenda grande de identificacao, 2 linhas"
@@ -243,7 +239,6 @@ def wrap_text(text: str, max_chars: int = 15, max_lines: int = 4) -> str:
     words = cleaned.split()
     lines = []
     current = ""
-
     for word in words:
         candidate = (current + " " + word).strip()
         if len(candidate) <= max_chars:
@@ -252,10 +247,8 @@ def wrap_text(text: str, max_chars: int = 15, max_lines: int = 4) -> str:
             if current:
                 lines.append(current)
             current = word
-
     if current:
         lines.append(current)
-
     return "\n".join(lines[:max_lines])
 
 
@@ -292,7 +285,7 @@ def scene_caption_filters(job: dict, job_id: str, y: int = 1345) -> str:
         a = scene["start"]
         b = scene["end"]
         filters += (
-            f",drawbox=x=90:y={y}:w=900:h=210:color=black@0.54:t=fill:enable='between(t,{a:.2f},{b:.2f})'"
+            f",drawbox=x=90:y={y}:w=900:h=210:color=black@0.50:t=fill:enable='between(t,{a:.2f},{b:.2f})'"
             f",drawtext=textfile={file_path}:fontcolor=white:fontsize=52:line_spacing=10:"
             f"x=(w-text_w)/2:y={y + 52}:enable='between(t,{a:.2f},{b:.2f})'"
         )
@@ -301,17 +294,27 @@ def scene_caption_filters(job: dict, job_id: str, y: int = 1345) -> str:
 
 def save_plan_files(job_id: str, job: dict, output_name: str):
     plan = {
-        "version": "0.4.1",
+        "version": "0.4.2",
         "job_id": job_id,
         "output": output_name,
         "template": job.get("template"),
         "seconds": job.get("seconds"),
+        "product_used": bool(job.get("product_path")),
         "scenes": job.get("scenes", []),
     }
     plan_path = OUTPUT_DIR / f"solia_{job_id}_plan.json"
     latest_plan_path = OUTPUT_DIR / "ULTIMO_PLANO_SOLIA.json"
     plan_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
     latest_plan_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def base_video_filter() -> str:
+    return (
+        "scale=1215:2160:force_original_aspect_ratio=increase,"
+        "crop=1080:1920,"
+        "eq=contrast=1.06:brightness=0.045:saturation=1.08,"
+        "unsharp=5:5:0.35"
+    )
 
 
 def build_planner_template(job: dict, output_path: Path) -> list[str]:
@@ -325,8 +328,7 @@ def build_planner_template(job: dict, output_path: Path) -> list[str]:
     captions = scene_caption_filters(job, job_id, 1345)
 
     filter_complex = (
-        f"[0:v]scale=1215:2160:force_original_aspect_ratio=increase,crop=1080:1920,"
-        f"eq=contrast=1.06:brightness=0.045:saturation=1.08,unsharp=5:5:0.35,"
+        f"[0:v]{base_video_filter()},"
         f"drawbox=x=0:y=0:w=1080:h=285:color=black@0.46:t=fill:enable='between(t,{hook_scene['start']:.2f},{hook_scene['end']:.2f})',"
         f"drawtext=textfile={hook_file}:fontcolor=white:fontsize=62:line_spacing=12:"
         f"box=1:boxcolor=black@0.22:boxborderw=14:x=(w-text_w)/2:y=78:enable='between(t,{hook_scene['start']:.2f},{hook_scene['end']:.2f})'"
@@ -338,6 +340,51 @@ def build_planner_template(job: dict, output_path: Path) -> list[str]:
         f"drawtext=text='Sol.IA Planner':fontcolor=white@0.56:fontsize=24:x=w-text_w-42:y=h-62[outv]"
     )
     return ["ffmpeg", "-y", "-t", str(seconds), "-i", job["input_path"], "-filter_complex", filter_complex, *common_output_args(output_path)]
+
+
+def build_product_overlay_template(job: dict, output_path: Path) -> list[str]:
+    if not job.get("product_path"):
+        return build_planner_template(job, output_path)
+
+    job_id = output_path.stem
+    seconds = job["seconds"]
+    scenes = job.get("scenes") or []
+    hook_scene = scenes[0]
+    cta_scene = scenes[-1]
+    hook_file = write_text_file(job_id, "product_hook", hook_scene["overlay"], 18, 3)
+    cta_file = write_text_file(job_id, "product_cta", cta_scene["overlay"], 18, 2)
+    mid_text = next((s.get("overlay") for s in scenes if s.get("role") == "PRODUTO"), job.get("middle", ""))
+    mid_file = write_text_file(job_id, "product_mid", mid_text, 18, 2)
+    captions = scene_caption_filters(job, job_id, 1280)
+    product_start = max(2, round(seconds * 0.22, 2))
+    product_end = max(product_start + 3, round(seconds * 0.86, 2))
+
+    filter_complex = (
+        f"[0:v]{base_video_filter()}[base];"
+        f"[1:v]scale=360:-1,format=rgba[prod];"
+        f"[base]"
+        f"drawbox=x=0:y=0:w=1080:h=285:color=black@0.44:t=fill:enable='between(t,{hook_scene['start']:.2f},{hook_scene['end']:.2f})',"
+        f"drawtext=textfile={hook_file}:fontcolor=white:fontsize=62:line_spacing=12:"
+        f"box=1:boxcolor=black@0.20:boxborderw=14:x=(w-text_w)/2:y=78:enable='between(t,{hook_scene['start']:.2f},{hook_scene['end']:.2f})'"
+        f"{captions},"
+        f"drawbox=x=620:y=690:w=420:h=650:color=black@0.56:t=fill:enable='between(t,{product_start:.2f},{product_end:.2f})',"
+        f"drawtext=textfile={mid_file}:fontcolor=yellow:fontsize=40:line_spacing=10:"
+        f"x=650:y=725:enable='between(t,{product_start:.2f},{product_end:.2f})'[v1];"
+        f"[v1][prod]overlay=x=650:y=835:enable='between(t,{product_start:.2f},{product_end:.2f})'[v2];"
+        f"[v2]"
+        f"drawbox=x=0:y=1515:w=1080:h=310:color=black@0.68:t=fill:enable='between(t,{cta_scene['start']:.2f},{cta_scene['end']:.2f})',"
+        f"drawtext=textfile={cta_file}:fontcolor=yellow:fontsize=60:line_spacing=12:"
+        f"x=(w-text_w)/2:y=1600:enable='between(t,{cta_scene['start']:.2f},{cta_scene['end']:.2f})',"
+        f"drawbox=x=0:y=1892:w='1080*t/{seconds}':h=12:color=yellow@0.88:t=fill,"
+        f"drawtext=text='Sol.IA + Produto':fontcolor=white@0.58:fontsize=24:x=w-text_w-42:y=h-62[outv]"
+    )
+    return [
+        "ffmpeg", "-y", "-t", str(seconds),
+        "-i", job["input_path"],
+        "-loop", "1", "-t", str(seconds), "-i", job["product_path"],
+        "-filter_complex", filter_complex,
+        *common_output_args(output_path),
+    ]
 
 
 def build_split_template(job: dict, output_path: Path) -> list[str]:
@@ -364,10 +411,6 @@ def build_split_template(job: dict, output_path: Path) -> list[str]:
     return ["ffmpeg", "-y", "-t", str(seconds), "-i", job["input_path"], "-filter_complex", filter_complex, *common_output_args(output_path)]
 
 
-def build_punch_template(job: dict, output_path: Path) -> list[str]:
-    return build_planner_template(job, output_path)
-
-
 def build_noir_template(job: dict, output_path: Path) -> list[str]:
     job_id = output_path.stem
     seconds = job["seconds"]
@@ -390,50 +433,17 @@ def build_noir_template(job: dict, output_path: Path) -> list[str]:
     return ["ffmpeg", "-y", "-t", str(seconds), "-i", job["input_path"], "-filter_complex", filter_complex, *common_output_args(output_path)]
 
 
-def build_product_template(job: dict, output_path: Path) -> list[str]:
-    if not job.get("product_path"):
-        return build_split_template(job, output_path)
-
-    job_id = output_path.stem
-    seconds = job["seconds"]
-    hook_file = write_text_file(job_id, "hook", job["hook"], 13)
-    middle_file = write_text_file(job_id, "middle", job["middle"], 14)
-    cta_file = write_text_file(job_id, "cta", job["cta"], 13)
-
-    filter_complex = (
-        f"[0:v]scale=620:1920:force_original_aspect_ratio=increase,crop=620:1920,"
-        f"eq=contrast=1.06:brightness=0.045:saturation=1.06,unsharp=5:5:0.35[left];"
-        f"color=c=0x080808:s=460x1920:d={seconds}[rightbase];"
-        f"[1:v]scale=330:-1,format=rgba[prod];"
-        f"[rightbase][prod]overlay=x=(W-w)/2:y=690:enable='gte(t,3)'[rightprod];"
-        f"[rightprod]drawtext=textfile={hook_file}:fontcolor=white:fontsize=46:line_spacing=10:"
-        f"x=(w-text_w)/2:y=160:enable='between(t,0,8)',"
-        f"drawtext=textfile={middle_file}:fontcolor=yellow:fontsize=38:line_spacing=10:"
-        f"x=(w-text_w)/2:y=470:enable='between(t,8,21)',"
-        f"drawbox=x=28:y=1410:w=404:h=210:color=red@0.62:t=fill:enable='gte(t,21)',"
-        f"drawtext=textfile={cta_file}:fontcolor=white:fontsize=42:line_spacing=10:"
-        f"x=(w-text_w)/2:y=1460:enable='gte(t,21)',"
-        f"drawtext=text='Sol.IA Cut':fontcolor=white@0.58:fontsize=24:x=(w-text_w)/2:y=1725[right];"
-        f"[left][right]hstack=inputs=2[outv]"
-    )
-
-    return [
-        "ffmpeg", "-y", "-t", str(seconds),
-        "-i", job["input_path"],
-        "-loop", "1", "-t", str(seconds), "-i", job["product_path"],
-        "-filter_complex", filter_complex,
-        *common_output_args(output_path),
-    ]
-
-
 def build_command(job: dict, output_path: Path) -> list[str]:
     template = job.get("template", "planner")
+    # Correção principal: se a usuária enviou produto, o Planner usa o produto automaticamente.
+    if job.get("product_path") and template in {"planner", "product"}:
+        return build_product_overlay_template(job, output_path)
     if template == "split":
         return build_split_template(job, output_path)
     if template == "noir":
         return build_noir_template(job, output_path)
     if template == "product":
-        return build_product_template(job, output_path)
+        return build_product_overlay_template(job, output_path)
     return build_planner_template(job, output_path)
 
 
@@ -448,9 +458,7 @@ def process_video(job_id: str):
     subprocess.run(cmd, check=True, capture_output=True, text=True)
 
     save_plan_files(job_id, job, output_name)
-
-    last_path = OUTPUT_DIR / "ULTIMO_SOLIA_EDITADO.mp4"
-    shutil.copyfile(output_path, last_path)
+    shutil.copyfile(output_path, OUTPUT_DIR / "ULTIMO_SOLIA_EDITADO.mp4")
 
     job["status"] = "done"
     job["result"] = output_name
@@ -465,7 +473,7 @@ async def worker():
                 await asyncio.to_thread(process_video, job_id)
         except subprocess.CalledProcessError as exc:
             jobs[job_id]["status"] = "error"
-            jobs[job_id]["error"] = exc.stderr[-3000:] if exc.stderr else str(exc)
+            jobs[job_id]["error"] = exc.stderr[-3500:] if exc.stderr else str(exc)
         except Exception as exc:
             jobs[job_id]["status"] = "error"
             jobs[job_id]["error"] = str(exc)
